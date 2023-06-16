@@ -149,7 +149,6 @@ class DaBaiSubscriber(Node):
 
         def depth_subscription_callback(self, msg):
                 self.depth_width = msg.width
-                self.depth_height = msg.height
                 self.depth_data = np.array(msg.data).reshape((480,640,-1)).astype(int)
                 # print(self.depth_data.shape)
                 # self.color_data = np.array(msg.data).reshape((self.depth_height,self.depth_width,2))[:,:,0]

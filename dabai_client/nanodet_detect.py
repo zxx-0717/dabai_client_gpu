@@ -2,7 +2,7 @@
 import cv2
 import time
 import socket
-from utils import *
+from .utils import *
 from struct import pack,unpack
 
 import rclpy
@@ -47,14 +47,19 @@ class DaBaiSubscriber(Node):
 
                 self.pub_pose = self.create_publisher(DetectResult, '/person_detected', 2)
 
-
                 parser = argparse.ArgumentParser()
                 parser.add_argument("--config", default=r'/workspaces/capella_ros_docker/src/dabai_client/dabai_client/nanodet-plus-m_416.yml',
                                 help="model config file path")
                 parser.add_argument("--model", default=r'/workspaces/capella_ros_docker/src/dabai_client/dabai_client/nanodet-plus-m_416_checkpoint.ckpt',
                                 help="model file path")
                 parser.add_argument("--camid", type=int, default=0, help="webcam demo camera id")
-                self.args = parser.parse_args()
+                # print('------------main entry')
+                self.args = parser.parse_args(args=[])
+                # print('*******************************')
+
+
+                
+                
 
                 local_rank = 0
                 torch.backends.cudnn.enabled = True
@@ -79,6 +84,10 @@ class DaBaiSubscriber(Node):
                 self.pipeline = Pipeline(cfg.data.val.pipeline, cfg.data.val.keep_ratio)
                 print('nanodet模型初始化完成')
 
+                
+
+
+
 
         def color_subscription_callback(self, msg):
                 self.color_width = msg.width
@@ -95,7 +104,7 @@ class DaBaiSubscriber(Node):
                 person_res = {}
                 person_res[0] = res[0][0]
                 # all_boxs：label, x0, y0, x1, y1, score
-                result_frame,all_box = self.visualize(person_res, meta, cfg.class_names, 0.35)
+                result_frame,all_box = self.visualize(person_res, meta, cfg.class_names, 0.55)
                 all_box = np.array(all_box)
 
                 # result_ = np.fromstring(data).reshape((-1,6))
@@ -131,16 +140,29 @@ class DaBaiSubscriber(Node):
                                                 # y = int(480 / 416 * y) 
                                                 # x = int(640 / 416 * x)
                                                 z_ = (self.depth_data[y][x][1]*256 + self.depth_data[y][x][0])
-                                                z_cos = z_ / math.sqrt(2)
-                                                x_ = (x - self.K[2]) / self.K[0] * z_
+                                                x_ = (x - self.K[2]) / self.K[0] * z_ 
                                                 y_ = (y - self.K[5]) / self.K[4] * z_
+                                                z_ /= 1000.
+                                                x_ /= 1000.
+                                                y_ /= 1000.
                                                 # x_ = self.depth_data[y][x][:4]
                                                 # y_ = self.depth_data[y][x][4:8]
                                                 # z_ = self.depth_data[y][x][8:12]
                                                 # depth_x = unpack("<f",pack('4B',*x_))[0]
                                                 # depth_y = unpack("<f",pack('4B',*y_))[0]
                                                 # depth_z = unpack("<f",pack('4B',*z_))[0]
-                                                print('------------------>',x_,y_,z_cos)
+
+                                                x_rot = z_
+                                                y_rot = x_
+                                                z_rot = y_
+                                                x_unrot = x_rot / math.sqrt(2) + z_rot / math.sqrt(2) 
+                                                y_unrot = y_rot
+                                                z_unrot = x_rot / math.sqrt(2) - z_rot / math.sqrt(2) 
+                                                
+                                                print('******************', round(x_rot, 2), round(x_unrot,2))
+                                                print('******************', round(y_rot, 2), round(y_unrot,2))
+                                                print('******************', round(z_rot, 2), round(z_unrot,2))
+
                                                 single_msg.part = False
                                                 if z_== 0:
                                                         single_msg.part = False
@@ -150,11 +172,13 @@ class DaBaiSubscriber(Node):
                                                         msg.result.append(single_msg)
                                                         
                                                 else:
-                                                        single_msg.x = z_cos / 1000.
-                                                        single_msg.y = x_ / 1000.
-                                                        single_msg.z = y_ / 1000.
+                                                        single_msg.x = x_unrot
+                                                        single_msg.y = y_unrot
+                                                        single_msg.z = z_unrot
                                                         msg.result.append(single_msg)
-                                                        cv2.putText(self.srcimg,str(round((z_cos / 1000),2))+'m',(x,y),cv2.FONT_HERSHEY_SIMPLEX,0.5,(255,0,0),thickness=1)
+                                                        cv2.putText(self.srcimg,
+                                                                    'x: ' + str(round(x_unrot ,2))+', y: ' + str(round(y_unrot, 2)),
+                                                                    (x,y),cv2.FONT_HERSHEY_SIMPLEX,0.5,(0,0,255 ),thickness=1)
                 
                 self.pub_pose.publish(msg)
                 cv2.imshow('img',self.srcimg)                
@@ -210,7 +234,7 @@ class DaBaiSubscriber(Node):
         def visualize(self, dets, meta, class_names, score_thres, wait=0):
                 time1 = time.time()
                 result_img,all_box = self.model.head.show_result(
-                meta["raw_img"][0], dets, class_names, score_thres=score_thres, show=True
+                meta["raw_img"][0], dets, class_names, score_thres=score_thres, show=False
                 )
                 print("viz time: {:.3f}s".format(time.time() - time1))
                 return result_img,all_box
@@ -228,7 +252,7 @@ class DaBaiSubscriber(Node):
                                 # all_boxs：label, x0, y0, x1, y1, score
                                 result_frame,all_box = self.visualize(person_res, meta, cfg.class_names, 0.35)
 
-                                cv2.imshow("det", result_frame)
+                                # cv2.imshow("det", result_frame)
                                 ch = cv2.waitKey(1)
                                 if ch == 27 or ch == ord("q") or ch == ord("Q"):
                                         break

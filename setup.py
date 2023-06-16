@@ -20,8 +20,9 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            "nanodet_client = dabai_client.nanodet_client:main",
+            "nonadet_client = dabai_client.nanodet_client:main",
             "dabai_test = dabai_client.dabai_test:main",
+            "dabai_detect = dabai_client.nanodet_detect:main",
         ],
     },
 )

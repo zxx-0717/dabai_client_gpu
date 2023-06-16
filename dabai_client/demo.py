@@ -103,7 +103,7 @@ def detect_person():
             # all_boxs：label, x0, y0, x1, y1, score
             result_frame,all_box = predictor.visualize(person_res, meta, cfg.class_names, 0.35)
 
-            cv2.imshow("det", result_frame)
+            # cv2.imshow("det", result_frame)
             ch = cv2.waitKey(1)
             if ch == 27 or ch == ord("q") or ch == ord("Q"):
                 break
