@@ -48,18 +48,15 @@ class DaBaiSubscriber(Node):
                 self.pub_pose = self.create_publisher(DetectResult, '/person_detected', 2)
 
                 parser = argparse.ArgumentParser()
-                parser.add_argument("--config", default=r'/workspaces/capella_ros_docker/src/dabai_client/dabai_client/nanodet-plus-m_416.yml',
+                parser.add_argument("--config", default=r'/workspaces/capella_ros_docker/src/dabai_client_gpu/dabai_client/nanodet-plus-m_416.yml',
                                 help="model config file path")
-                parser.add_argument("--model", default=r'/workspaces/capella_ros_docker/src/dabai_client/dabai_client/nanodet-plus-m_416_checkpoint.ckpt',
+                parser.add_argument("--model", default=r'/workspaces/capella_ros_docker/src/dabai_client_gpu/dabai_client/nanodet-plus-m_416_checkpoint.ckpt',
                                 help="model file path")
                 parser.add_argument("--camid", type=int, default=0, help="webcam demo camera id")
                 # print('------------main entry')
                 self.args = parser.parse_args(args=[])
                 # print('*******************************')
-
-
-                
-                
+                self.delta_x = 0.25
 
                 local_rank = 0
                 torch.backends.cudnn.enabled = True
@@ -133,38 +130,64 @@ class DaBaiSubscriber(Node):
                                         # center_point = np.array([[240,320]])
                                         # print(center_point)
                                         
+                                        index = 0
                                         for x,y in center_point:
-                                                # x = 320
-                                                # y = 240
-                                                single_msg = SingleDetector() 
-                                                # y = int(480 / 416 * y) 
-                                                # x = int(640 / 416 * x)
-                                                z_ = (self.depth_data[y][x][1]*256 + self.depth_data[y][x][0])
-                                                x_ = (x - self.K[2]) / self.K[0] * z_ 
-                                                y_ = (y - self.K[5]) / self.K[4] * z_
-                                                z_ /= 1000.
-                                                x_ /= 1000.
-                                                y_ /= 1000.
-                                                # x_ = self.depth_data[y][x][:4]
-                                                # y_ = self.depth_data[y][x][4:8]
-                                                # z_ = self.depth_data[y][x][8:12]
-                                                # depth_x = unpack("<f",pack('4B',*x_))[0]
-                                                # depth_y = unpack("<f",pack('4B',*y_))[0]
-                                                # depth_z = unpack("<f",pack('4B',*z_))[0]
+                                                # single_msg = SingleDetector() 
+                                                # z_ = (self.depth_data[y][x][1]*256 + self.depth_data[y][x][0])
+                                                # x_ = (x - self.K[2]) / self.K[0] * z_ 
+                                                # y_ = (y - self.K[5]) / self.K[4] * z_
+                                                # z_ /= 1000.
+                                                # x_ /= 1000.
+                                                # y_ /= 1000.
+                                                # x_rot = z_
+                                                # y_rot = x_
+                                                # z_rot = y_
+                                                # x_unrot = x_rot / math.sqrt(2) + z_rot / math.sqrt(2) 
+                                                # y_unrot = y_rot
+                                                # z_unrot = x_rot / math.sqrt(2) - z_rot / math.sqrt(2)
 
-                                                x_rot = z_
-                                                y_rot = x_
-                                                z_rot = y_
-                                                x_unrot = x_rot / math.sqrt(2) + z_rot / math.sqrt(2) 
-                                                y_unrot = y_rot
-                                                z_unrot = x_rot / math.sqrt(2) - z_rot / math.sqrt(2) 
-                                                
-                                                print('******************', round(x_rot, 2), round(x_unrot,2))
-                                                print('******************', round(y_rot, 2), round(y_unrot,2))
-                                                print('******************', round(z_rot, 2), round(z_unrot,2))
+                                                x_unrot, y_unrot, z_unrot = self.getDepth_XYZ(x, y)
+                                                print('x_unrot: ', x_unrot, 'y_unrot: ', y_unrot)
+                                                x_coordinate_select = 0
+                                                y_abs_min = 5.0
 
+                                                x1 = int(det_bboxes[index][0])
+                                                x2 = int(det_bboxes[index][2])
+                                                y1 = int(det_bboxes[index][1])
+                                                y2 = int(det_bboxes[index][3])
+                                                cv2.line(self.srcimg, (0,y),(639,y), (0,0,255), thickness=1, lineType=cv2.LINE_AA)
+                                                print('x1: ', x1, 'x2: ', x2)
+                                                print('y1: ', y1, 'y2: ', y2)
+                                                range_x12 = x2 - x1
+                                                range_y12 = y2 - y1
+                                                y_up = 3
+                                                y_start = y - y_up
+                                                for yyy in range(y_up * 2 + 1):
+                                                        for xxx in range(range_x12):
+                                                                xx,yy,zz = self.getDepth_XYZ(x1 + xxx, y_start + yyy)
+                                                                if abs(xx - x_unrot) < 0.3:
+                                                                        self.srcimg[y_start + yyy][x1 + xxx] = (0,255,0)
+                                                all_y_on_center_line = []
+                                                all_x_on_center_line = []
+                                                for j in range(y_up * 2 + 1):
+                                                        for i in range(range_x12):
+                                                                x_tmp, y_tmp, z_tmp = self.getDepth_XYZ(i + x1, y_start + j)
+                                                                all_y_on_center_line.append(round(y_tmp,2))
+                                                                all_x_on_center_line.append(round(x_tmp,2))
+                                                                if abs(x_tmp - x_unrot) < self.delta_x:
+                                                                        if abs(y_abs_min) > abs(y_tmp):
+                                                                                y_abs_min = y_tmp
+                                                                                x_coordinate_select = i + x1
+
+                                                # print('****** x *******')
+                                                # print(all_x_on_center_line)
+                                                # print('****** y *******')
+                                                # # print(all_y_on_center_line)
+                                                # print('x_coordinate_select: ', x_coordinate_select)
+                                                # print('====================================================')
+                                                index += 1
                                                 single_msg.part = False
-                                                if z_== 0:
+                                                if x_unrot == 0:
                                                         single_msg.part = False
                                                         single_msg.x = 100.
                                                         single_msg.y = 100.
@@ -177,12 +200,31 @@ class DaBaiSubscriber(Node):
                                                         single_msg.z = z_unrot
                                                         msg.result.append(single_msg)
                                                         cv2.putText(self.srcimg,
-                                                                    'x: ' + str(round(x_unrot ,2))+', y: ' + str(round(y_unrot, 2)),
-                                                                    (x,y),cv2.FONT_HERSHEY_SIMPLEX,0.5,(0,0,255 ),thickness=1)
+                                                                    'x: ' + str(round(x_unrot ,2))+', y: ' + str(round(y_abs_min, 2)),
+                                                                    (x, y),cv2.FONT_HERSHEY_SIMPLEX,0.5,(0,0,255 ),thickness=1)
+                                                        cv2.circle(self.srcimg, (x_coordinate_select, y), 8, (0,0,255), thickness=1)
                 
                 self.pub_pose.publish(msg)
                 cv2.imshow('img',self.srcimg)                
                 cv2.waitKey(1)
+
+        def getDepth_XYZ(self, x, y): # x => 深度， y => 水平偏移， z => 垂直偏移
+                z_ = (self.depth_data[y][x][1]*256 + self.depth_data[y][x][0])
+                x_ = (x - self.K[2]) / self.K[0] * z_ 
+                y_ = (y - self.K[5]) / self.K[4] * z_
+                z_ /= 1000.
+                x_ /= 1000.
+                y_ /= 1000.
+                x_rot = z_
+                y_rot = x_
+                z_rot = y_
+                x_unrot = x_rot / math.sqrt(2) + z_rot / math.sqrt(2) 
+                y_unrot = y_rot
+                z_unrot = x_rot / math.sqrt(2) - z_rot / math.sqrt(2) 
+
+                return x_unrot, y_unrot, z_unrot
+
+
 
         def depth_subscription_callback(self, msg):
                 self.depth_width = msg.width
